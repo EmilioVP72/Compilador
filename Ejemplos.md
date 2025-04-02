@@ -26,9 +26,14 @@ while (x < 10) {
 }
 
 # FOR
-while (x < 10) {  
+for (x < 10) {  
     puts("x es menor que 10");  
     x = x + 1;  
+}
+
+# Until 
+until (x > 10) {
+    puts("x es menor que 10");
 }
 
 # Switch
@@ -43,6 +48,11 @@ switch (opcion) {
         puts("Opción no válida");  
 }
 
-# Matriz 
+# Lista - List
+
+# Matriz (Opcional)
 matriz = [ [1, 2], [3, 4] ];  
 puts(matriz[1][0]);  // Imprime 3  
+
+
+
