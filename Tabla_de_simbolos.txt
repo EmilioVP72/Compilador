@@ -1,0 +1,16 @@
+class
+init
+end
+if
+else
+while
+for
+switch
+case
+default
+puts
+full
+half
+bin
+crs
+chain

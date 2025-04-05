@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import scrolledtext
 import re
 import os
+#Mensaje para checar si vale 3 hectarias de verga mi conexión funka o no
 
 # Palabras reservadas 
 PALABRAS_RESERVADAS = [
