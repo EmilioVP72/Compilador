@@ -1,11 +1,41 @@
 import tkinter as tk
 from tkinter import scrolledtext
+import re
+import os
 
-root = tk.Tk()
-root.title("Interfaz de Compilador")
-root.geometry("600x400")
+# Palabras reservadas 
+PALABRAS_RESERVADAS = [
+    "class", "init", "end", "if", "else", "while", "for", "switch", "case", "default",
+    "puts", "full", "half", "bin", "crs", "chain"
+]
 
-# Función para alternar entre modo claro y modo noche
+TABLA_SIMBOLOS = "Tabla_de_simbolos.txt"
+if not os.path.exists(TABLA_SIMBOLOS):
+    with open(TABLA_SIMBOLOS, "w") as archivo:
+        for palabra in PALABRAS_RESERVADAS:
+            archivo.write(f"{palabra}\n")
+
+def resaltar_palabras(event=None):
+    editor_text.tag_remove("reservada", "1.0", tk.END)
+    texto = editor_text.get("1.0", tk.END)
+    for palabra in PALABRAS_RESERVADAS:
+        for match in re.finditer(rf'\b{palabra}\b', texto):
+            inicio = f"1.0 + {match.start()} chars"
+            final = f"1.0 + {match.end()} chars"
+            editor_text.tag_add("reservada", inicio, final)
+    editor_text.tag_config("reservada", foreground="green")
+
+# Función para tokenizar y mostrar el resultado
+def compilar():
+    texto = editor_text.get("1.0", tk.END)
+    tokens = re.findall(r"[a-zA-Z_]\w*|\d+\.\d+|\d+|==|!=|<=|>=|[+\-*/=<>:{}()\[\];,.]", texto)
+    resultado_text.config(state=tk.NORMAL)
+    resultado_text.delete("1.0", tk.END)
+    resultado_text.insert(tk.END, "Tokens encontrados:\n\n")
+    for token in tokens:
+        resultado_text.insert(tk.END, f"{token}\n")
+    resultado_text.config(state=tk.DISABLED)
+
 def alternar_tema():
     if root.option_get("theme", "light") == "light":
         root.tk_setPalette(background="#2E2E2E", foreground="white")
@@ -22,16 +52,21 @@ def alternar_tema():
         btn_tema.config(bg="lightgray", fg="black")
         root.option_add("*theme", "light")
 
-editor_text = scrolledtext.ScrolledText(root, height=10, width=70, font=("Courier", 12))
-editor_text.pack(pady=10)
+root = tk.Tk()
+root.title("Interfaz de Compilador")
+root.geometry("700x500")
 
-btn_compilar = tk.Button(root, text="Compilar")
+editor_text = scrolledtext.ScrolledText(root, height=10, width=80, font=("Courier", 12))
+editor_text.pack(pady=10)
+editor_text.bind("<KeyRelease>", resaltar_palabras)
+
+btn_compilar = tk.Button(root, text="Compilar", command=compilar)
 btn_compilar.pack()
 
 btn_tema = tk.Button(root, text="Modo Noche", command=alternar_tema)
 btn_tema.pack()
 
-resultado_text = scrolledtext.ScrolledText(root, height=10, width=70, font=("Courier", 12), state=tk.DISABLED)
+resultado_text = scrolledtext.ScrolledText(root, height=10, width=80, font=("Courier", 12), state=tk.DISABLED)
 resultado_text.pack(pady=10)
 
-tk.mainloop()
+root.mainloop()
