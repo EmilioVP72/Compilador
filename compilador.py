@@ -28,12 +28,50 @@ def agregar_a_tabla_simbolos(token):
         if token not in contenido:
             archivo.write(f"{token}\n")
 
+
 # --------------------- AFDs ---------------------
 def es_identificador(token):
     return re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", token) is not None
 
 def es_numero(token):
     return re.fullmatch(r"\d+(\.\d+)?", token) is not None
+
+def evaluar_expresion(expr, memoria):
+    # Tokeniza la expresión (ej. "x+y" -> ["x", "+", "y"])
+    tokens_expr = re.findall(r"[a-zA-Z_]\w*|\d+\.\d+|\d+|[+\-*/]", expr)
+    # Convierte tokens a valores (números o variables en memoria)
+    valores = []
+    for tok in tokens_expr:
+        if es_numero(tok):
+            valores.append(float(tok) if "." in tok else int(tok))
+        elif tok in memoria:
+            valores.append(memoria[tok])
+        elif tok in ["+", "-", "*", "/"]:
+            valores.append(tok)
+        else:
+            raise ValueError(f"Variable '{tok}' no definida")
+    
+    # Evaluación recursiva
+    def _evaluar(tokens):
+        if len(tokens) == 1:
+            return tokens[0]
+        # Prioridad de operadores: * y / primero
+        for op in ["*", "/"]:
+            while op in tokens:
+                idx = tokens.index(op)
+                a, b = tokens[idx-1], tokens[idx+1]
+                res = a * b if op == "*" else a / b
+                tokens = tokens[:idx-1] + [res] + tokens[idx+2:]
+        # Luego + y -
+        for op in ["+", "-"]:
+            while op in tokens:
+                idx = tokens.index(op)
+                a, b = tokens[idx-1], tokens[idx+1]
+                res = a + b if op == "+" else a - b
+                tokens = tokens[:idx-1] + [res] + tokens[idx+2:]
+        return tokens[0]
+    
+    return _evaluar(valores)
 
 # --------------------- ANÁLISIS SINTÁCTICO ---------------------
 def analizar_sintaxis(tokens):
@@ -95,6 +133,9 @@ def analizar_sintaxis(tokens):
                     errores.append("Error de sintaxis en puts.")
                     i = j + 2
                     continue
+        elif token == "if": #Desición agregada para rectificar instrucción if
+            err, i = analizar_if(tokens, i)
+            errores.extend(err)
         elif token == "{":
             contador_llaves += 1
         elif token == "}":
@@ -108,6 +149,35 @@ def analizar_sintaxis(tokens):
     if contador_llaves > 0:
         errores.append(f"Error: {contador_llaves} llave(s) de apertura '{' sin cerrar '}'.")
     return errores
+
+def analizar_if(tokens, i):
+    errores = []
+    if i+1 >= len(tokens) or tokens[i+1] != "(":
+        errores.append("Error: Falta '(' después de 'if'")
+        return errores, i
+    
+    # Busca el cierre de condición ")"
+    j = i + 2
+    while j < len(tokens) and tokens[j] != ")":
+        j += 1
+    
+    if j >= len(tokens):
+        errores.append("Error: Falta ')' para condición del if")
+        return errores, j
+    
+    # Verifica bloque { ... } o línea simple
+    if j+1 < len(tokens):
+        if tokens[j+1] == "{":
+            k = j + 2
+            while k < len(tokens) and tokens[k] != "}":
+                k += 1
+            if k >= len(tokens):
+                errores.append("Error: Falta '}' para cerrar bloque if")
+            return errores, k
+        else:
+            # Bloque de una línea (ej. if (x>5) puts("Hola");)
+            return errores, j + 2
+    return errores, j
 
 # --------------------- EJECUCIÓN DEL CÓDIGO ---------------------
 def ejecutar_codigo(tokens):
