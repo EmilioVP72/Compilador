@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import scrolledtext
 import re
 import os
-import hashlib
 import time
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -17,13 +16,35 @@ TABLA_SIMBOLOS = "Tabla_de_simbolos.txt"
 HASH_TABLA = {}
 
 # --------------------- HASH DE PALABRAS RESERVADAS (como tabla de dispersión eficiente) ---------------------
+def hash_simple(palabra):
+    h = 0
+    for i, c in enumerate(palabra):
+        h ^= (ord(c) + i * 31)  # combinación simple con XOR y desplazamiento
+        h *= 17  # constante para mezclar más
+        h &= 0xFFFFFFFF  # aseguramos 32 bits para evitar overflow
+    return f"{h:08x}"  # convertimos a hex con relleno a 8 caracteres
+
 def construir_hash():
     global HASH_TABLA
-    HASH_TABLA = {palabra: hashlib.sha256(palabra.encode()).hexdigest()[:8] for palabra in PALABRAS_RESERVADAS}
+    HASH_TABLA = {palabra: hash_simple(palabra) for palabra in PALABRAS_RESERVADAS}
     with open("tabla_hash.txt", "w") as archivo:
         archivo.write("Tabla hash de palabras reservadas:\n\n")
         for palabra, hash_val in HASH_TABLA.items():
             archivo.write(f"{palabra}: {hash_val}\n")
+
+def mostrar_tabla_hash():
+    construir_hash()
+    ventana_hash = tk.Toplevel(root)
+    ventana_hash.title("Tabla Hash de Palabras Reservadas")
+    ventana_hash.geometry("400x400")
+
+    texto_hash = scrolledtext.ScrolledText(ventana_hash, font=("Courier", 11))
+    texto_hash.pack(expand=True, fill="both")
+
+    texto_hash.insert(tk.END, "Palabra reservada : Hash\n\n")
+    for palabra, hash_val in HASH_TABLA.items():
+        texto_hash.insert(tk.END, f"{palabra:<20}: {hash_val}\n")
+    texto_hash.config(state=tk.DISABLED)
 
 # --------------------- TABLA DE SÍMBOLOS ---------------------
 if not os.path.exists(TABLA_SIMBOLOS):
@@ -193,6 +214,10 @@ def compilar():
         errores_text.insert(tk.END, "Resultado de ejecución:\n\n")
         for linea in salida:
             errores_text.insert(tk.END, f"{linea}\n")
+    
+    fin = time.time()
+    duracion = fin - inicio
+    errores_text.insert(tk.END, f"\nTiempo de compilación: {duracion:.4f} segundos")
 
     resultado_text.config(state=tk.DISABLED)
     errores_text.config(state=tk.DISABLED)
@@ -247,6 +272,9 @@ btn_tema.pack()
 
 btn_limpiar = tk.Button(root, text="Limpiar Tabla de Símbolos", command=limpiar_tabla)
 btn_limpiar.pack()
+
+btn_hash = tk.Button(root, text="Ver Tabla Hash", command=mostrar_tabla_hash)
+btn_hash.pack()
 
 resultado_text = scrolledtext.ScrolledText(root, height=10, width=100, font=("Courier", 12), state=tk.DISABLED)
 resultado_text.pack(pady=10)

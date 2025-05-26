@@ -1,0 +1,18 @@
+Tabla hash de palabras reservadas:
+
+class: 07b98278
+init: 007b27b2
+end: 0006faba
+if: 00006e3c
+else: 00786b2d
+while: 096eae2f
+for: 000711f8
+switch: 9babb5cf
+case: 007564d0
+default: d80d0892
+puts: 0097e186
+full: 0079c2a1
+half: 007a3ab1
+bin: 0006c666
+crs: 0006cfc3
+chain: 07c836d7
