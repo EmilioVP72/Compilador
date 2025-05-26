@@ -2,12 +2,15 @@ import tkinter as tk
 from tkinter import scrolledtext
 import re
 import os
+import time
 
 # Palabras reservadas
 PALABRAS_RESERVADAS = [
     "class", "init", "end", "if", "else", "while", "for", "switch", "case", "default",
     "puts", "full", "half", "bin", "crs", "chain"
 ]
+SIMBOLOS_VALIDOS = ['+', '-', '*', '/', '=', '==', '!=', '<=', '>=', '<', '>', '(', ')', '{', '}', '[', ']', ':', ';', ',', '.']
+
 
 # --------------------- MANEJO DE LA TABLA DE SÍMBOLOS ---------------------
 TABLA_SIMBOLOS = "Tabla_de_simbolos.txt"
@@ -84,8 +87,15 @@ def agregar_a_tabla_simbolos(token):
 
 # Función para tokenizar y mostrar el resultado
 def compilar():
+    inicio = time.time()  # Marca de tiempo inicial
+
     texto = editor_text.get("1.0", tk.END)
     tokens = re.findall(r"[a-zA-Z_]\w*|\d+\.\d+|\d+|==|!=|<=|>=|[+\-*/=<>:{}()\[\];,.]", texto)
+
+    with open(TABLA_SIMBOLOS, "r") as archivo:
+        simbolos_existentes = set(archivo.read().splitlines())
+
+    nuevos_simbolos = []
 
     # Limpia áreas
     resultado_text.config(state=tk.NORMAL)
@@ -99,16 +109,25 @@ def compilar():
     for token in tokens:
         resultado_text.insert(tk.END, f"{token}\n")
         if es_identificador(token) and token not in PALABRAS_RESERVADAS:
-            agregar_a_tabla_simbolos(token)
+            if token not in simbolos_existentes:
+                nuevos_simbolos.append(token)
         elif es_numero(token):
-            agregar_a_tabla_simbolos(token)
-        elif token not in PALABRAS_RESERVADAS:
+            if token not in simbolos_existentes:
+                nuevos_simbolos.append(token)
+        elif token not in PALABRAS_RESERVADAS and token not in SIMBOLOS_VALIDOS:
             errores_text.insert(tk.END, f"Token no reconocido: {token}\n")
 
+    if nuevos_simbolos:
+        with open(TABLA_SIMBOLOS, "a") as archivo:
+            for simb in nuevos_simbolos:
+                archivo.write(f"{simb}\n")
+
+    fin = time.time()  # Marca de tiempo final
+    tiempo_total = fin - inicio
+
+    resultado_text.insert(tk.END, f"\nTiempo de compilación: {tiempo_total:.6f} segundos\n")
     resultado_text.config(state=tk.DISABLED)
     errores_text.config(state=tk.DISABLED)
-
-
 
 def alternar_tema():
     if root.option_get("theme", "light") == "light":
