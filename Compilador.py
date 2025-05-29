@@ -3,6 +3,8 @@ from tkinter import scrolledtext
 import re
 import os
 import time
+from tkinter import filedialog
+
 
 # --------------------- CONFIGURACIÓN ---------------------
 SIMBOLOS_VALIDOS = ['+', '-', '*', '/', '=', '==', '!=', '<=', '>=', '<', '>', '(', ')', '{', '}', '[', ']', ';', ':', ',', '.', '&&', '||', '!']
@@ -12,6 +14,9 @@ PALABRAS_RESERVADAS = [
 ]
 TABLA_SIMBOLOS = "Tabla_de_simbolos.txt"
 HASH_TABLA = {}
+ARCHIVO_BIN = "tabla_simbolos.bin"
+TAM_SLOT = 32
+NUM_SLOTS = 256  
 
 # --------------------- HASH DE PALABRAS RESERVADAS (como tabla de dispersión eficiente) ---------------------
 def hash_simple(palabra):
@@ -438,6 +443,53 @@ def interpretar(tokens):
             i += 1
 
     return salida
+
+def inicializar_archivo_binario():
+    if not os.path.exists(ARCHIVO_BIN):
+        with open(ARCHIVO_BIN, "wb") as f:
+            f.write(b'\x00' * TAM_SLOT * NUM_SLOTS)
+
+def hash_numerico(token):
+    h = 0
+    for i, c in enumerate(token):
+        h ^= (ord(c) + i * 31)
+        h *= 17
+        h &= 0xFFFFFFFF
+    return h % NUM_SLOTS
+
+def guardar_token_binario(token):
+    token = token.strip()
+    if not token:
+        return
+
+    token_bytes = token.encode('utf-8')[:TAM_SLOT]
+    token_bytes += b'\x00' * (TAM_SLOT - len(token_bytes))
+
+    pos_inicial = hash_numerico(token)
+
+    with open(ARCHIVO_BIN, "r+b") as f:
+        for intento in range(NUM_SLOTS):
+            pos = (pos_inicial + intento) % NUM_SLOTS
+            f.seek(pos * TAM_SLOT)
+            datos = f.read(TAM_SLOT)
+
+            if datos.strip(b'\x00') == b'':
+                f.seek(pos * TAM_SLOT)
+                f.write(token_bytes)
+                break
+            elif datos.strip(b'\x00') == token_bytes.strip(b'\x00'):
+                break  # Ya está
+        else:
+            print("¡Tabla de símbolos llena!")
+
+def imprimir_tabla_binaria():
+    print("Contenido de tabla_simbolos.bin:")
+    with open(ARCHIVO_BIN, "rb") as f:
+        for i in range(NUM_SLOTS):
+            f.seek(i * TAM_SLOT)
+            datos = f.read(TAM_SLOT)
+            if datos.strip(b'\x00'):
+                print(f"[{i:03}] {datos.decode('utf-8').strip()}")
 # --------------------- COMPILACIÓN ---------------------
 def compilar():
     inicio = time.time()
@@ -455,9 +507,9 @@ def compilar():
     for token in tokens:
         resultado_text.insert(tk.END, f"{token}\n")
         if es_identificador(token) and token not in HASH_TABLA:
-            agregar_a_tabla_simbolos(token)
+            guardar_token_binario(token)
         elif es_numero(token):
-            agregar_a_tabla_simbolos(token)
+            guardar_token_binario(token)
 
     construir_hash()
 
@@ -478,6 +530,8 @@ def compilar():
 
     resultado_text.config(state=tk.DISABLED)
     errores_text.config(state=tk.DISABLED)
+
+
 
 # --------------------- RESALTADO DE PALABRAS RESERVADAS ---------------------
 def resaltar_palabras(event=None):
@@ -502,7 +556,6 @@ def alternar_tema():
         errores_text.config(bg="#1E1E1E", fg="red")
         btn_compilar.config(bg="#444", fg="white")
         btn_tema.config(bg="#444", fg="white")
-        btn_limpiar.config(bg="#444", fg="white")
     else:
         root.tk_setPalette(background="white", foreground="black")
         editor_text.config(bg="white", fg="black", insertbackground="black")
@@ -510,10 +563,49 @@ def alternar_tema():
         errores_text.config(bg="white", fg="red")
         btn_compilar.config(bg="lightgray", fg="black")
         btn_tema.config(bg="lightgray", fg="black")
-        btn_limpiar.config(bg="lightgray", fg="black")
 
+def mostrar_tabla_binaria():
+    ventana_bin = tk.Toplevel(root)
+    ventana_bin.title("Tabla de Símbolos (Binaria)")
+    ventana_bin.geometry("400x500")
+
+    texto_bin = scrolledtext.ScrolledText(ventana_bin, font=("Courier", 11))
+    texto_bin.pack(expand=True, fill="both")
+
+    texto_bin.insert(tk.END, f"Posición\tToken\n")
+    texto_bin.insert(tk.END, f"{'-'*32}\n")
+
+    with open(ARCHIVO_BIN, "rb") as f:
+        for i in range(NUM_SLOTS):
+            f.seek(i * TAM_SLOT)
+            datos = f.read(TAM_SLOT)
+            if datos.strip(b'\x00'):
+                token = datos.decode('utf-8').strip('\x00')
+                texto_bin.insert(tk.END, f"{i:03}\t\t{token}\n")
+
+    texto_bin.config(state=tk.DISABLED)
+
+def cargar_desde_archivo():
+    archivo = filedialog.askopenfilename(filetypes=[("Archivos de texto", "*.txt")])
+    if archivo:
+        with open(archivo, "r") as f:
+            contenido = f.read()
+            editor_text.delete("1.0", tk.END)
+            editor_text.insert(tk.END, contenido)
+
+def limpiar_pantalla():
+    editor_text.delete("1.0", tk.END)
+    resultado_text.config(state=tk.NORMAL)
+    resultado_text.delete("1.0", tk.END)
+    resultado_text.config(state=tk.DISABLED)
+    errores_text.config(state=tk.NORMAL)
+    errores_text.delete("1.0", tk.END)
+    errores_text.config(state=tk.DISABLED)
+    
 # --------------------- INTERFAZ ---------------------
 root = tk.Tk()
+boton_frame = tk.Frame(root)
+boton_frame.pack(pady=10)
 root.title("Interfaz de Compilador con Tiempos")
 root.geometry("900x800")
 
@@ -521,17 +613,23 @@ editor_text = scrolledtext.ScrolledText(root, height=10, width=100, font=("Couri
 editor_text.pack(pady=10)
 editor_text.bind("<KeyRelease>", resaltar_palabras)
 
-btn_compilar = tk.Button(root, text="Analizar / Compilar", command=compilar)
-btn_compilar.pack()
+btn_compilar = tk.Button(boton_frame, text="Analizar / Compilar", command=compilar)
+btn_tema = tk.Button(boton_frame, text="Modo Noche", command=alternar_tema)
+btn_limpiar_tabla = tk.Button(boton_frame, text="Limpiar Tabla de Símbolos", command=limpiar_tabla)
+btn_hash = tk.Button(boton_frame, text="Ver Tabla Hash", command=mostrar_tabla_hash)
+btn_tabla_bin = tk.Button(boton_frame, text="Ver Tabla Binaria", command=mostrar_tabla_binaria)
+btn_cargar = tk.Button(boton_frame, text="Cargar desde archivo", command=cargar_desde_archivo)
+btn_limpiar_pantalla = tk.Button(boton_frame, text="Limpiar Pantalla", command=limpiar_pantalla)
 
-btn_tema = tk.Button(root, text="Modo Noche", command=alternar_tema)
-btn_tema.pack()
+# Primera fila
+btn_compilar.grid(row=0, column=0, padx=5, pady=5)
+btn_tema.grid(row=0, column=1, padx=5, pady=5)
+btn_limpiar_tabla.grid(row=0, column=2, padx=5, pady=5)
 
-btn_limpiar = tk.Button(root, text="Limpiar Tabla de Símbolos", command=limpiar_tabla)
-btn_limpiar.pack()
-
-btn_hash = tk.Button(root, text="Ver Tabla Hash", command=mostrar_tabla_hash)
-btn_hash.pack()
+# Segunda fila
+btn_hash.grid(row=1, column=0, padx=5, pady=5)
+btn_tabla_bin.grid(row=1, column=1, padx=5, pady=5)
+btn_cargar.grid(row=1, column=2, padx=5, pady=5)
 
 resultado_text = scrolledtext.ScrolledText(root, height=10, width=100, font=("Courier", 12), state=tk.DISABLED)
 resultado_text.pack(pady=10)
@@ -539,4 +637,5 @@ resultado_text.pack(pady=10)
 errores_text = scrolledtext.ScrolledText(root, height=7, width=100, font=("Courier", 12), fg="red", state=tk.DISABLED)
 errores_text.pack(pady=10)
 
+inicializar_archivo_binario()
 root.mainloop()
