@@ -148,14 +148,12 @@ def analizar_sintaxis(tokens):
         
         indice += 3  # Saltar variable, '=' y valor
         
-        # Validar que haya punto y coma después de inicialización
         if indice >= longitud or tokens[indice] != ";":
             errores.append("Error: Falta ';' después de la inicialización del 'for'.")
             return indice, False
         
         indice += 1  # Saltar ';'
         
-        # Validar condición (debe ser una expresión booleana)
         inicio_condicion = indice
         while indice < longitud and tokens[indice] != ";":
             indice += 1
@@ -169,9 +167,7 @@ def analizar_sintaxis(tokens):
             errores.append("Error: Falta condición en el 'for'.")
             return indice, False
         
-        indice += 1  # Saltar ';'
-        
-        # Validar incremento (debe ser una asignación o operación)
+        indice += 1  
         inicio_incremento = indice
         while indice < longitud and tokens[indice] != ")":
             indice += 1
@@ -185,14 +181,11 @@ def analizar_sintaxis(tokens):
             errores.append("Error: Falta incremento en el 'for'.")
             return indice, False
         
-        # Validar que el incremento sea una asignación (i = i + 1) o operación unaria (i++)
         if len(incremento) < 3 or incremento[1] != "=":
             errores.append("Error: Incremento del 'for' debe ser una asignación (ej: i = i + 1).")
             return indice, False
         
-        indice += 1  # Saltar ')'
-        
-        # Validar el bloque de código
+        indice += 1 
         indice, ok = validar_bloque_desde(indice)
         if not ok:
             return indice, False
@@ -216,7 +209,6 @@ def analizar_sintaxis(tokens):
                     continue
             continue
 
-        # Nueva validación para el ciclo for
         elif token == "for":
             i, ok = validar_for_desde(i)
             if not ok:
@@ -342,6 +334,46 @@ def interpretar(tokens):
             else:
                 i += 1
 
+        elif token == "while":
+            if i + 1 < longitud and tokens[i + 1] == "(":
+                j = i + 2
+                cond_tokens = []
+                paren_count = 1
+                while j < longitud and paren_count > 0:
+                    if tokens[j] == "(":
+                        paren_count += 1
+                    elif tokens[j] == ")":
+                        paren_count -= 1
+                        if paren_count == 0:
+                            break
+                    if paren_count > 0:
+                        cond_tokens.append(tokens[j])
+                    j += 1
+                j += 1  # después del ')'
+                j, bloque_tokens = ejecutar_bloque(j)
+                while evaluar_expresion(cond_tokens):
+                    k = 0
+                    while k < len(bloque_tokens):
+                        t = bloque_tokens[k]
+                        if t == "puts" and k + 4 < len(bloque_tokens) and bloque_tokens[k + 1] == "(" and bloque_tokens[k + 3] == ")" and bloque_tokens[k + 4] == ";":
+                            val = bloque_tokens[k + 2].strip("'\"")
+                            salida.append(val)
+                            k += 5
+                        elif t in memoria and k + 2 < len(bloque_tokens) and bloque_tokens[k + 1] == "=":
+                            var = bloque_tokens[k]
+                            expr_tokens = []
+                            k += 2
+                            while k < len(bloque_tokens) and bloque_tokens[k] != ";":
+                                expr_tokens.append(bloque_tokens[k])
+                                k += 1
+                            val = evaluar_expresion(expr_tokens)
+                            memoria[var] = val
+                            k += 1
+                        else:
+                            k += 1
+                i = j
+                continue
+
         elif token == "for":
             if i + 1 < longitud and tokens[i + 1] == "(":
                 j = i + 2
@@ -374,6 +406,16 @@ def interpretar(tokens):
                             val = bloque_tokens[k + 2].strip("'\"")
                             salida.append(val)
                             k += 5
+                        elif t in memoria and k + 2 < len(bloque_tokens) and bloque_tokens[k + 1] == "=":
+                            var = bloque_tokens[k]
+                            expr_tokens = []
+                            k += 2
+                            while k < len(bloque_tokens) and bloque_tokens[k] != ";":
+                                expr_tokens.append(bloque_tokens[k])
+                                k += 1
+                            val = evaluar_expresion(expr_tokens)
+                            memoria[var] = val
+                            k += 1
                         else:
                             k += 1
                     if len(incremento_tokens) >= 3 and incremento_tokens[1] == "=":
@@ -396,7 +438,6 @@ def interpretar(tokens):
             i += 1
 
     return salida
-
 # --------------------- COMPILACIÓN ---------------------
 def compilar():
     inicio = time.time()
