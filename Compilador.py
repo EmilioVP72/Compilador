@@ -3,8 +3,6 @@ from tkinter import scrolledtext
 import re
 import os
 import time
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # --------------------- CONFIGURACIÓN ---------------------
 SIMBOLOS_VALIDOS = ['+', '-', '*', '/', '=', '==', '!=', '<=', '>=', '<', '>', '(', ')', '{', '}', '[', ']', ';', ':', ',', '.', '&&', '||', '!']
@@ -19,10 +17,10 @@ HASH_TABLA = {}
 def hash_simple(palabra):
     h = 0
     for i, c in enumerate(palabra):
-        h ^= (ord(c) + i * 31)  # combinación simple con XOR y desplazamiento
-        h *= 17  # constante para mezclar más
-        h &= 0xFFFFFFFF  # aseguramos 32 bits para evitar overflow
-    return f"{h:08x}"  # convertimos a hex con relleno a 8 caracteres
+        h ^= (ord(c) + i * 31)  
+        h *= 17  
+        h &= 0xFFFFFFFF 
+    return f"{h:08x}"  
 
 def construir_hash():
     global HASH_TABLA
@@ -77,62 +75,103 @@ def analizar_sintaxis(tokens):
     longitud = len(tokens)
     contador_llaves = 0
 
-    while i < longitud:
+    # Validación estructura inicial (como ya tienes)
+    if longitud < 4:
+        errores.append("Error: El código debe iniciar con 'class <nombre> {' y terminar con '}'.")
+        return errores
+
+    if tokens[0] != "class":
+        errores.append("Error: El código debe comenzar con la palabra reservada 'class'.")
+        return errores
+
+    if not es_identificador(tokens[1]):
+        errores.append("Error: Se esperaba un identificador después de 'class'.")
+        return errores
+
+    if tokens[2] != "{":
+        errores.append("Error: Se esperaba una llave de apertura '{' después del nombre de la clase.")
+        return errores
+
+    if tokens[-1] != "}":
+        errores.append("Error: El código debe finalizar con una llave de cierre '}'.")
+        return errores
+
+    contador_llaves = 1
+    i = 3  
+    
+    def validar_expresion_desde(indice):
+        if indice >= longitud or tokens[indice] != "(":
+            errores.append("Error: Se esperaba '(' después de 'if'.")
+            return indice, False
+        indice += 1
+        while indice < longitud and tokens[indice] != ")":
+            if not (es_identificador(tokens[indice]) or es_numero(tokens[indice]) or tokens[indice] in SIMBOLOS_VALIDOS):
+                errores.append(f"Expresión inválida en condición if: {tokens[indice]}")
+                return indice, False
+            indice += 1
+        if indice == longitud or tokens[indice] != ")":
+            errores.append("Error: Falta ')' al final de la condición if.")
+            return indice, False
+        return indice + 1, True
+
+    def validar_bloque_desde(indice):
+        if indice >= longitud or tokens[indice] != "{":
+            errores.append("Error: Se esperaba '{' para iniciar un bloque.")
+            return indice, False
+        indice += 1
+        llaves_abiertas = 1
+        while indice < longitud and llaves_abiertas > 0:
+            if tokens[indice] == "{":
+                llaves_abiertas += 1
+            elif tokens[indice] == "}":
+                llaves_abiertas -= 1
+            indice += 1
+        if llaves_abiertas != 0:
+            errores.append("Error: Llave '{' sin cerrar en bloque.")
+            return indice, False
+        return indice, True
+
+    while i < longitud - 1:
         token = tokens[i]
-        if token in ["full", "half", "bin", "crs", "chain"]:
-            if i+1 < longitud and es_identificador(tokens[i+1]):
-                if i+2 < longitud and tokens[i+2] == "=":
-                    j = i+3
-                    while j < longitud and tokens[j] != ";":
-                        if not (es_identificador(tokens[j]) or es_numero(tokens[j]) or tokens[j] in SIMBOLOS_VALIDOS):
-                            errores.append(f"Expresión inválida en asignación: {tokens[j]}")
-                            break
-                        j += 1
-                    if j < longitud and tokens[j] == ";":
-                        i = j + 1
-                        continue
-                    else:
-                        errores.append("Falta ';' al final de la declaración.")
-                        i = j + 1
-                        continue
-                elif i+2 < longitud and tokens[i+2] == ";":
-                    i += 3
-                    continue
-                else:
-                    errores.append("Falta ';' al final de la declaración.")
-                    i += 3
-                    continue
-            else:
-                errores.append("Nombre de variable no válido.")
-                i += 2
+
+        if token == "if":
+            i, ok = validar_expresion_desde(i + 1)
+            if not ok:
                 continue
+            i, ok = validar_bloque_desde(i)
+            if not ok:
+                continue
+            if i < longitud and tokens[i] == "else":
+                i += 1
+                i, ok = validar_bloque_desde(i)
+                if not ok:
+                    continue
+            continue
+
+        if token in ["full", "half", "bin", "crs", "chain"]:
+            pass
+
         elif token == "puts":
-            if i+1 < longitud and tokens[i+1] == "(":
-                j = i+2
-                while j < longitud and tokens[j] != ")":
-                    if tokens[j] not in [","] + SIMBOLOS_VALIDOS and not (es_identificador(tokens[j]) or es_numero(tokens[j])):
-                        errores.append(f"Argumento inválido en puts: {tokens[j]}")
-                        break
-                    j += 1
-                if j+1 < longitud and tokens[j] == ")" and tokens[j+1] == ";":
-                    i = j + 2
-                    continue
-                else:
-                    errores.append("Error de sintaxis en puts.")
-                    i = j + 2
-                    continue
+            if i + 4 < longitud and tokens[i+1] == "(" and tokens[i+3] == ")" and tokens[i+4] == ";":
+                i += 5
+                continue
+            else:
+                errores.append("Error sintáctico: 'puts' debe tener formato puts('...'); con ';' obligatorio")
+                i += 1
+                continue
+
         elif token == "{":
             contador_llaves += 1
         elif token == "}":
-            if contador_llaves > 0:
+            if contador_llaves > 1:
                 contador_llaves -= 1
             else:
                 errores.append("Error: llave de cierre '}' sin llave de apertura '{'.")
-        elif token in ["if", "while", "for", "switch"]:
-            pass
         i += 1
-    if contador_llaves > 0:
-        errores.append(f"Error: {contador_llaves} llave(s) de apertura '{{' sin cerrar '}}'.")
+
+    if contador_llaves > 1:
+        errores.append(f"Error: {contador_llaves - 1} llave(s) de apertura '{{' sin cerrar '}}'.")
+
     return errores
 
 # --------------------- INTERPRETACIÓN ---------------------
@@ -142,43 +181,107 @@ def interpretar(tokens):
     i = 0
     longitud = len(tokens)
 
+    def evaluar_expresion(expr_tokens):
+        expr = "".join(expr_tokens)
+        try:
+            return eval(expr, {}, memoria)
+        except Exception:
+            return False
+
+    def ejecutar_bloque(inicio):
+        j = inicio
+        resultado = []
+        if tokens[j] != '{':
+            return j, resultado  
+
+        j += 1
+        bloque_tokens = []
+        llaves = 1
+        while j < longitud and llaves > 0:
+            if tokens[j] == '{':
+                llaves += 1
+            elif tokens[j] == '}':
+                llaves -= 1
+                if llaves == 0:
+                    break
+            bloque_tokens.append(tokens[j])
+            j += 1
+
+        k = 0
+        while k < len(bloque_tokens):
+            t = bloque_tokens[k]
+            if t in ["full", "half", "bin", "crs", "chain"]:
+                k += 3
+            elif t == "puts":
+                if k+4 < len(bloque_tokens) and bloque_tokens[k+1] == "(" and bloque_tokens[k+3] == ")" and bloque_tokens[k+4] == ";":
+                    val = bloque_tokens[k+2].strip("'\"") 
+                    resultado.append(val)
+                    k += 5
+                else:
+                    k += 1
+            else:
+                k += 1
+
+        return j+1, resultado
+
     while i < longitud:
         token = tokens[i]
         if token in ["full", "half", "bin", "crs", "chain"]:
-            if i+1 < longitud and es_identificador(tokens[i+1]):
+            if i+2 < longitud and tokens[i+2] == "=":
                 var = tokens[i+1]
-                if i+2 < longitud and tokens[i+2] == "=":
-                    j = i+3
-                    expr = ""
-                    while j < longitud and tokens[j] != ";":
-                        expr += tokens[j]
-                        j += 1
-                    try:
-                        valor = eval(expr, {}, memoria)
-                        memoria[var] = valor
-                    except Exception:
-                        salida.append(f"[Error ejecución] Asignación inválida: {expr}")
-                    i = j + 1
-                    continue
-                elif i+2 < longitud and tokens[i+2] == ";":
-                    memoria[var] = None
-                    i += 3
-                    continue
-        elif token == "puts":
+                j = i+3
+                expr_tokens = []
+                while j < longitud and tokens[j] != ";":
+                    expr_tokens.append(tokens[j])
+                    j += 1
+                val = evaluar_expresion(expr_tokens)
+                memoria[var] = val
+                i = j + 1
+                continue
+            else:
+                i += 3
+                continue
+        elif token == "if":
             if i+1 < longitud and tokens[i+1] == "(":
                 j = i+2
-                expr = ""
-                while j < longitud and tokens[j] != ")":
-                    expr += tokens[j] if tokens[j] != "," else " "
+                cond_tokens = []
+                paren_count = 1
+                while j < longitud and paren_count > 0:
+                    if tokens[j] == "(":
+                        paren_count += 1
+                    elif tokens[j] == ")":
+                        paren_count -= 1
+                        if paren_count == 0:
+                            break
+                    if paren_count > 0:
+                        cond_tokens.append(tokens[j])
                     j += 1
-                try:
-                    valores = [str(memoria.get(e, e)) for e in expr.strip().split()]
-                    salida.append(" ".join(valores))
-                except Exception as e:
-                    salida.append(f"[Error ejecución] Error en puts: {e}")
-                i = j + 2
+                condicion = evaluar_expresion(cond_tokens)
+                j += 1
+                j, bloque_true = ejecutar_bloque(j)
+                bloque_false = []
+                if j < longitud and tokens[j] == "else":
+                    j += 1
+                    j, bloque_false = ejecutar_bloque(j)
+                if condicion:
+                    salida.extend(bloque_true)
+                else:
+                    salida.extend(bloque_false)
+                i = j
                 continue
-        i += 1
+            else:
+                i += 1
+        elif token == "puts":
+            if i+4 < longitud and tokens[i+1] == "(" and tokens[i+3] == ")" and tokens[i+4] == ";":
+                val = tokens[i+2].strip("'\"")
+                salida.append(val)
+                i += 5
+                continue
+            else:
+                i += 1
+        else:
+            i += 1
+
     return salida
 
 # --------------------- COMPILACIÓN ---------------------
