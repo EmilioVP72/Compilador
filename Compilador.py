@@ -1,10 +1,8 @@
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, filedialog
 import re
 import os
 import time
-from tkinter import filedialog
-
 
 # --------------------- CONFIGURACIÓN ---------------------
 SIMBOLOS_VALIDOS = ['+', '-', '*', '/', '=', '==', '!=', '<=', '>=', '<', '>', '(', ')', '{', '}', '[', ']', ';', ':', ',', '.', '&&', '||', '!']
@@ -74,175 +72,138 @@ def es_numero(token):
     return re.fullmatch(r"\d+(\.\d+)?", token) is not None
 
 # --------------------- ANÁLISIS SINTÁCTICO ---------------------
-def analizar_sintaxis(tokens):
+def analizar_sintaxis_por_linea(texto_fuente):
+    lineas = texto_fuente.strip().splitlines()
     errores = []
-    i = 0
-    longitud = len(tokens)
-    contador_llaves = 0
 
-    # Validación estructura inicial (existente)
-    if longitud < 4:
-        errores.append("Error: El código debe iniciar con 'class <nombre> {' y terminar con '}'.")
+    token_pattern = r"'[^']*'|\"[^\"]*\"|==|!=|<=|>=|&&|\|\||[+\-*/=<>!;:{}()\[\],\.]|\d+\.\d+|\d+|[a-zA-Z_]\w*"
+    tokens_todo = re.findall(token_pattern, texto_fuente)
+
+    if len(tokens_todo) < 4:
+        errores.append("El código debe comenzar con 'class <Nombre> {' y finalizar con '}'.")
         return errores
 
-    if tokens[0] != "class":
-        errores.append("Error: El código debe comenzar con la palabra reservada 'class'.")
-        return errores
+    if tokens_todo[0] != "class":
+        errores.append("El código debe comenzar con la palabra reservada 'class'.")
+    elif not es_identificador(tokens_todo[1]):
+        errores.append("Se esperaba un identificador después de 'class'.")
+    elif tokens_todo[2] != "{":
+        errores.append("Se esperaba '{' después del nombre de la clase.")
+    if tokens_todo[-1] != "}":
+        errores.append("El código debe finalizar con una llave de cierre '}'.")
 
-    if not es_identificador(tokens[1]):
-        errores.append("Error: Se esperaba un identificador después de 'class'.")
-        return errores
-
-    if tokens[2] != "{":
-        errores.append("Error: Se esperaba una llave de apertura '{' después del nombre de la clase.")
-        return errores
-
-    if tokens[-1] != "}":
-        errores.append("Error: El código debe finalizar con una llave de cierre '}'.")
-        return errores
-
-    contador_llaves = 1
-    i = 3  
-    
-    # Función para validar expresiones (existente)
-    def validar_expresion_desde(indice):
-        if indice >= longitud or tokens[indice] != "(":
-            errores.append("Error: Se esperaba '(' después de 'if'.")
-            return indice, False
-        indice += 1
-        while indice < longitud and tokens[indice] != ")":
-            if not (es_identificador(tokens[indice]) or es_numero(tokens[indice]) or tokens[indice] in SIMBOLOS_VALIDOS):
-                errores.append(f"Expresión inválida en condición if: {tokens[indice]}")
-                return indice, False
-            indice += 1
-        if indice == longitud or tokens[indice] != ")":
-            errores.append("Error: Falta ')' al final de la condición if.")
-            return indice, False
-        return indice + 1, True
-
-    # Función para validar bloques (existente)
-    def validar_bloque_desde(indice):
-        if indice >= longitud or tokens[indice] != "{":
-            errores.append("Error: Se esperaba '{' para iniciar un bloque.")
-            return indice, False
-        indice += 1
-        llaves_abiertas = 1
-        while indice < longitud and llaves_abiertas > 0:
-            if tokens[indice] == "{":
-                llaves_abiertas += 1
-            elif tokens[indice] == "}":
-                llaves_abiertas -= 1
-            indice += 1
-        if llaves_abiertas != 0:
-            errores.append("Error: Llave '{' sin cerrar en bloque.")
-            return indice, False
-        return indice, True
-
-    # Nueva función para validar estructura del for
-    def validar_for_desde(indice):
-        if indice + 1 >= longitud or tokens[indice + 1] != "(":
-            errores.append("Error: Se esperaba '(' después de 'for'.")
-            return indice, False
-        
-        indice += 2  # Saltar 'for' y '('
-        
-        # Validar inicialización (debe ser una asignación)
-        if indice + 3 >= longitud or tokens[indice + 1] != "=":
-            errores.append("Error: Inicialización del 'for' debe ser una asignación (ej: i = 0).")
-            return indice, False
-        
-        indice += 3  # Saltar variable, '=' y valor
-        
-        if indice >= longitud or tokens[indice] != ";":
-            errores.append("Error: Falta ';' después de la inicialización del 'for'.")
-            return indice, False
-        
-        indice += 1  # Saltar ';'
-        
-        inicio_condicion = indice
-        while indice < longitud and tokens[indice] != ";":
-            indice += 1
-        
-        if indice >= longitud:
-            errores.append("Error: Falta ';' después de la condición del 'for'.")
-            return indice, False
-        
-        condicion = tokens[inicio_condicion:indice]
-        if not condicion:
-            errores.append("Error: Falta condición en el 'for'.")
-            return indice, False
-        
-        indice += 1  
-        inicio_incremento = indice
-        while indice < longitud and tokens[indice] != ")":
-            indice += 1
-        
-        if indice >= longitud:
-            errores.append("Error: Falta ')' al final del 'for'.")
-            return indice, False
-        
-        incremento = tokens[inicio_incremento:indice]
-        if not incremento:
-            errores.append("Error: Falta incremento en el 'for'.")
-            return indice, False
-        
-        if len(incremento) < 3 or incremento[1] != "=":
-            errores.append("Error: Incremento del 'for' debe ser una asignación (ej: i = i + 1).")
-            return indice, False
-        
-        indice += 1 
-        indice, ok = validar_bloque_desde(indice)
-        if not ok:
-            return indice, False
-        
-        return indice, True
-
-    while i < longitud - 1:
-        token = tokens[i]
-
-        if token == "if":
-            i, ok = validar_expresion_desde(i + 1)
-            if not ok:
-                continue
-            i, ok = validar_bloque_desde(i)
-            if not ok:
-                continue
-            if i < longitud and tokens[i] == "else":
-                i += 1
-                i, ok = validar_bloque_desde(i)
-                if not ok:
-                    continue
+    for num_linea, linea in enumerate(lineas, start=1):
+        tokens = re.findall(token_pattern, linea)
+        if not tokens:
             continue
+        errores.extend(analizar_linea(tokens, num_linea))
 
-        elif token == "for":
-            i, ok = validar_for_desde(i)
-            if not ok:
-                continue
-            continue
+    # Validación de balance de llaves
+    apertura = texto_fuente.count("{")
+    cierre = texto_fuente.count("}")
+    if apertura > cierre:
+        errores.append(f"Hay {apertura - cierre} llave(s) '{{' sin cerrar con '}}'.")
+    elif cierre > apertura:
+        errores.append(f"Hay {cierre - apertura} llave(s) '}}' sin apertura '{{'.")
 
-        elif token in ["full", "half", "bin", "crs", "chain"]:
-            pass
+    return errores
 
-        elif token == "puts":
-            if i + 4 < longitud and tokens[i+1] == "(" and tokens[i+3] == ")" and tokens[i+4] == ";":
-                i += 5
-                continue
-            else:
-                errores.append("Error sintáctico: 'puts' debe tener formato puts('...'); con ';' obligatorio")
-                i += 1
-                continue
+def analizar_linea(tokens, num_linea):
+    errores = []
 
-        elif token == "{":
-            contador_llaves += 1
-        elif token == "}":
-            if contador_llaves > 1:
-                contador_llaves -= 1
-            else:
-                errores.append("Error: llave de cierre '}' sin llave de apertura '{'.")
-        i += 1
+    if tokens[0] in ["full", "half", "bin", "crs", "chain"]:
+        if len(tokens) < 5:
+            errores.append(f"Línea {num_linea}: Instrucción incompleta.")
+        elif not es_identificador(tokens[1]):
+            errores.append(f"Línea {num_linea}: Identificador inválido.")
+        elif tokens[2] != "=":
+            errores.append(f"Línea {num_linea}: Se esperaba '=' después del identificador.")
+        elif tokens[-1] != ";":
+            errores.append(f"Línea {num_linea}: Se esperaba ';' al final de la declaración.")
 
-    if contador_llaves > 1:
-        errores.append(f"Error: {contador_llaves - 1} llave(s) de apertura '{{' sin cerrar '}}'.")
+    elif tokens[0] == "puts":
+        if len(tokens) < 5:
+            errores.append(f"Línea {num_linea}: Instrucción 'puts' incompleta.")
+        elif tokens[1] != "(":
+            errores.append(f"Línea {num_linea}: Se esperaba '(' después de 'puts'.")
+        elif tokens[-2] != ")":
+            errores.append(f"Línea {num_linea}: Se esperaba ')' antes del ';'.")
+        elif tokens[-1] != ";":
+            errores.append(f"Línea {num_linea}: Se esperaba ';' al final de 'puts'.")
+        else:
+            argumento = tokens[2]
+            if argumento.startswith("'") and not argumento.endswith("'"):
+                errores.append(f"Línea {num_linea}: Falta comilla de cierre simple en argumento de 'puts'.")
+            elif argumento.startswith('\"') and not argumento.endswith('\"'):
+                errores.append(f"Línea {num_linea}: Falta comilla de cierre doble en argumento de 'puts'.")
+
+    elif tokens[0] == "if":
+        if "(" not in tokens or ")" not in tokens:
+            errores.append(f"Línea {num_linea}: Falta paréntesis en condición de 'if'.")
+        else:
+            try:
+                i1 = tokens.index("(")
+                i2 = tokens.index(")", i1)
+                cond = tokens[i1 + 1:i2]
+                if len(cond) < 3:
+                    errores.append(f"Línea {num_linea}: Condición 'if' demasiado corta o incompleta.")
+                elif not any(op in cond for op in ["<", ">", "==", "!=", "<=", ">="]):
+                    errores.append(f"Línea {num_linea}: Falta operador lógico en condición de 'if'.")
+            except ValueError:
+                errores.append(f"Línea {num_linea}: Estructura de condición 'if' mal formada.")
+
+    elif tokens[0] == "while":
+        if "(" not in tokens or ")" not in tokens:
+            errores.append(f"Línea {num_linea}: Falta paréntesis en condición de 'while'.")
+        else:
+            try:
+                i1 = tokens.index("(")
+                i2 = tokens.index(")", i1)
+                cond = tokens[i1 + 1:i2]
+                if len(cond) < 3:
+                    errores.append(f"Línea {num_linea}: Condición 'while' demasiado corta o incompleta.")
+                elif not any(op in cond for op in ["<", ">", "==", "!=", "<=", ">="]):
+                    errores.append(f"Línea {num_linea}: Falta operador lógico en condición de 'while'.")
+            except ValueError:
+                errores.append(f"Línea {num_linea}: Estructura de condición 'while' mal formada.")
+
+    elif tokens[0] == "for":
+        if "(" not in tokens or ")" not in tokens:
+            errores.append(f"Línea {num_linea}: Falta paréntesis en 'for'.")
+        else:
+            try:
+                i1 = tokens.index("(")
+                i2 = tokens.index(";", i1)
+                i3 = tokens.index(";", i2 + 1)
+                i4 = tokens.index(")", i3)
+
+                # Inicialización
+                init = tokens[i1 + 1:i2]
+                if len(init) < 3 or init[1] != "=":
+                    errores.append(f"Línea {num_linea}: Asignación inválida en la inicialización del 'for'.")
+
+                # Condición
+                cond = tokens[i2 + 1:i3]
+                if not any(op in cond for op in ["<", ">", "==", "!=", "<=", ">="]):
+                    errores.append(f"Línea {num_linea}: Falta operador lógico en condición del 'for'.")
+
+                # Incremento
+                inc = tokens[i3 + 1:i4]
+                if len(inc) < 3 or inc[1] != "=":
+                    errores.append(f"Línea {num_linea}: Incremento inválido en 'for'. Se esperaba una asignación como i = i + 1.")
+
+            except ValueError:
+                errores.append(f"Línea {num_linea}: Estructura 'for' mal formada o incompleta.")
+
+    elif tokens[0] == "else":
+        if len(tokens) == 1:
+            errores.append(f"Línea {num_linea}: Falta bloque para 'else'.")
+        elif tokens[1] != "{":
+            errores.append(f"Línea {num_linea}: Se esperaba '{{' después de 'else'.")
+
+    elif "=" in tokens:
+        if tokens[-1] != ";":
+            errores.append(f"Línea {num_linea}: Se esperaba ';' al final de la asignación.")
 
     return errores
 
@@ -361,9 +322,18 @@ def interpretar(tokens):
                     while k < len(bloque_tokens):
                         t = bloque_tokens[k]
                         if t == "puts" and k + 4 < len(bloque_tokens) and bloque_tokens[k + 1] == "(" and bloque_tokens[k + 3] == ")" and bloque_tokens[k + 4] == ";":
-                            val = bloque_tokens[k + 2].strip("'\"")
-                            salida.append(val)
+                            contenido = bloque_tokens[k + 2]
+                            if re.fullmatch(r"'[^']*'|\"[^\"]*\"", contenido):
+                                val = contenido.strip("'\"")
+                            elif contenido in memoria:
+                                val = memoria[contenido]
+                            elif es_numero(contenido):
+                                val = contenido
+                            else:
+                                val = f"[{contenido} no definido]"
+                            salida.append(str(val))
                             k += 5
+
                         elif t in memoria and k + 2 < len(bloque_tokens) and bloque_tokens[k + 1] == "=":
                             var = bloque_tokens[k]
                             expr_tokens = []
@@ -408,9 +378,18 @@ def interpretar(tokens):
                     while k < len(bloque_tokens):
                         t = bloque_tokens[k]
                         if t == "puts" and k + 4 < len(bloque_tokens) and bloque_tokens[k + 1] == "(" and bloque_tokens[k + 3] == ")" and bloque_tokens[k + 4] == ";":
-                            val = bloque_tokens[k + 2].strip("'\"")
-                            salida.append(val)
+                            contenido = bloque_tokens[k + 2]
+                            if re.fullmatch(r"'[^']*'|\"[^\"]*\"", contenido):
+                                val = contenido.strip("'\"")
+                            elif contenido in memoria:
+                                val = memoria[contenido]
+                            elif es_numero(contenido):
+                                val = contenido
+                            else:
+                                val = f"[{contenido} no definido]"
+                            salida.append(str(val))
                             k += 5
+                            
                         elif t in memoria and k + 2 < len(bloque_tokens) and bloque_tokens[k + 1] == "=":
                             var = bloque_tokens[k]
                             expr_tokens = []
@@ -432,12 +411,21 @@ def interpretar(tokens):
 
         elif token == "puts":
             if i + 4 < longitud and tokens[i + 1] == "(" and tokens[i + 3] == ")" and tokens[i + 4] == ";":
-                val = tokens[i + 2].strip("'\"")
-                salida.append(val)
+                contenido = tokens[i + 2]
+        # Si es texto entre comillas, imprimimos el literal
+                if re.fullmatch(r"'[^']*'|\"[^\"]*\"", contenido):
+                    val = contenido.strip("'\"")
+        # Si es identificador definido, imprimimos su valor
+                elif contenido in memoria:
+                    val = memoria[contenido]
+        # Si es número explícito
+                elif es_numero(contenido):
+                    val = contenido
+                else:
+                    val = f"[{contenido} no definido]"
+                salida.append(str(val))
                 i += 5
                 continue
-            else:
-                i += 1
 
         else:
             i += 1
@@ -495,7 +483,7 @@ def compilar():
     inicio = time.time()
 
     texto = editor_text.get("1.0", tk.END)
-    token_pattern = r'==|!=|<=|>=|&&|\|\||[+\-*/=<>!;:{}()\[\],\.]|\d+\.\d+|\d+|[a-zA-Z_]\w*'
+    token_pattern = r"'[^']*'|\"[^\"]*\"|==|!=|<=|>=|&&|\|\||[+\-*/=<>!;:{}()\[\],\.]|\d+\.\d+|\d+|[a-zA-Z_]\w*"
     tokens = re.findall(token_pattern, texto)
 
     resultado_text.config(state=tk.NORMAL)
@@ -513,7 +501,8 @@ def compilar():
 
     construir_hash()
 
-    errores_sintacticos = analizar_sintaxis(tokens)
+    # Análisis línea por línea
+    errores_sintacticos = analizar_sintaxis_por_linea(texto)
     if errores_sintacticos:
         errores_text.insert(tk.END, "Errores encontrados:\n\n")
         for err in errores_sintacticos:
@@ -530,8 +519,6 @@ def compilar():
 
     resultado_text.config(state=tk.DISABLED)
     errores_text.config(state=tk.DISABLED)
-
-
 
 # --------------------- RESALTADO DE PALABRAS RESERVADAS ---------------------
 def resaltar_palabras(event=None):
