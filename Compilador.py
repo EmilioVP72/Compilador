@@ -75,7 +75,349 @@ def analizar_sintaxis(tokens):
     longitud = len(tokens)
     contador_llaves = 0
 
+<<<<<<< Updated upstream
     while i < longitud:
+=======
+    # Validación estructura inicial (existente)
+    if longitud < 4:
+        errores.append("Error: El código debe iniciar con 'class <nombre> {' y terminar con '}'.")
+        return errores
+
+    if tokens[0] != "class":
+        errores.append("Error: El código debe comenzar con la palabra reservada 'class'.")
+        return errores
+
+    if not es_identificador(tokens[1]):
+        errores.append("Error: Se esperaba un identificador después de 'class'.")
+        return errores
+
+    if tokens[2] != "{":
+        errores.append("Error: Se esperaba una llave de apertura '{' después del nombre de la clase.")
+        return errores
+
+    if tokens[-1] != "}":
+        errores.append("Error: El código debe finalizar con una llave de cierre '}'.")
+        return errores
+
+    contador_llaves = 1
+    i = 3  
+    
+    #-------------------REESTRUCTURACIÓN PARA RECURSIVIDAD-----------------
+    # Función para validar expresiones (existente)
+    def analizar_sentencia(indice):
+        """Distribuye a las funciones específicas (if, for, puts, etc.)."""
+        token = tokens[indice]
+        if token == "if":
+            return analizar_if(indice)
+        elif token == "while":
+            return analizar_while(indice)
+        elif token == "for":
+            return analizar_for(indice)
+        elif token in ["int", "float", "string", "bool", "void"]:
+            return analizar_metodo(indice)
+        elif token == "puts":
+            return analizar_puts(indice)
+    # ... más casos
+        else:
+            errores.append(f"Sentencia no reconocida: '{token}'")
+            return indice, False
+        
+    def analizar_metodo(indice):
+        """Valida la estructura de un método y su cuerpo recursivamente."""
+    # 1. Validar tipo de retorno
+        if tokens[indice] not in ["int", "float", "string", "bool", "void"]:
+            errores.append(f"Error: Tipo de retorno inválido '{tokens[indice]}'")
+            return indice, False
+    # 2. Validar nombre del método
+        if indice + 1 >= len(tokens) or not es_identificador(tokens[indice + 1]):
+            errores.append(f"Error: Nombre de método inválido '{tokens[indice + 1]}'")
+            return indice, False
+    # 3. Validar apertura '('
+        if indice + 2 >= len(tokens) or tokens[indice + 2] != "(":
+            errores.append("Error: Falta '(' después del nombre del método")
+            return indice, False
+    # 4. Validar parámetros (pueden estar vacíos)
+        indice_parametros = indice + 3
+        indice_parametros, ok = analizar_parametros(indice_parametros)
+        if not ok:
+            return indice_parametros, False
+    # 5. Validar cierre ')'
+        if tokens[indice_parametros] != ")":
+            errores.append("Error: Falta ')' después de los parámetros")
+            return indice_parametros, False
+    # 6. Validar bloque del método (recursivo)
+        indice_bloque = indice_parametros + 1
+        indice_bloque, ok = analizar_bloque(indice_bloque)
+        return indice_bloque, ok
+
+    def analizar_parametros(indice):
+        """Valida la lista de parámetros: (TIPO_DATO IDENTIFICADOR, ...)"""
+        while indice < len(tokens) and tokens[indice] != ")":
+        # Validar tipo del parámetro
+            if tokens[indice] not in ["int", "float", "string", "bool"]:
+                errores.append(f"Error: Tipo de parámetro inválido '{tokens[indice]}'")
+                return indice, False
+        
+        # Validar nombre del parámetro
+            if indice + 1 >= len(tokens) or not es_identificador(tokens[indice + 1]):
+                errores.append(f"Error: Nombre de parámetro inválido '{tokens[indice + 1]}'")
+                return indice + 1, False
+        
+            indice += 2  # Saltar tipo y nombre
+        
+        # Verificar si hay más parámetros
+            if indice < len(tokens) and tokens[indice] == ",":
+                indice += 1
+                if indice >= len(tokens) or tokens[indice] in [")", ","]:
+                    errores.append("Error: Falta parámetro después de ','")
+                    return indice, False
+                
+        return indice, True
+
+    def analizar_bloque(indice):
+        """Valida un bloque {} y las sentencias dentro de él. Estructura: { SENTENCIAS } → SENTENCIAS puede ser vacío o múltiples sentencias."""
+        if indice >= len(tokens) or tokens[indice] != "{":
+            errores.append("Error: Se esperaba '{' para iniciar un bloque")
+            return indice, False
+
+        indice += 1  # Saltar '{'
+        llaves_abiertas = 1
+
+        while indice < len(tokens) and llaves_abiertas > 0:
+            if tokens[indice] == "}":
+                llaves_abiertas -= 1
+                if llaves_abiertas == 0:
+                    break  # Bloque cerrado correctamente
+            elif tokens[indice] == "{":
+                llaves_abiertas += 1  # Bloque anidado
+
+            # Validar cada sentencia dentro del bloque (recursivo)
+            indice, ok = analizar_sentencia(indice)
+            if not ok:
+                return indice, False
+
+        if llaves_abiertas != 0:
+            errores.append("Error: Falta '}' para cerrar el bloque")
+            return indice, False
+        
+        return indice + 1, True  # Saltar '}'
+    
+    def analizar_sentencia(indice):
+        """Decide qué tipo de sentencia es y redirige a la función correspondiente."""
+        token = tokens[indice]
+
+        # 1. Declaración de variable (ej: int x = 5;)
+        if token in ["int", "float", "string", "bool"]:
+            return analizar_declaracion(indice)
+
+        # 2. Estructuras de control
+        elif token == "if":
+            return analizar_if(indice)
+        elif token == "while":
+            return analizar_while(indice)
+        elif token == "for":
+            return analizar_for(indice)
+
+        # 3. Llamadas a función o asignaciones (ej: puts("hola"); o x = 10;)
+        elif es_identificador(token) and indice + 1 < len(tokens) and tokens[indice + 1] == "=":
+            return analizar_asignacion(indice)
+        elif token == "puts":
+            return analizar_puts(indice)
+
+        # 4. Bloques vacíos o llaves adicionales
+        elif token == "}" or token == "{":
+            return indice + 1, True  # Ignorar (ya se maneja en analizar_bloque)
+        else:
+            errores.append(f"Error: Sentencia no reconocida '{token}'")
+        return indice, False
+    
+    def analizar_expresion(indice):
+        """Valida expresiones como 'x + 5', '(a == b)', etc."""
+        while indice < len(tokens) and tokens[indice] not in [";", ")", "}"]:
+            token = tokens[indice]
+            if token == "(":
+                indice, ok = analizar_expresion(indice + 1)
+                if not ok or tokens[indice] != ")":
+                    return indice, False
+                indice +=1
+            elif not (es_identificador(token) or es_numero(token) or token in SIMBOLOS_VALIDOS):
+                errores.append(f"Erro: Token inválido en expresión: '{token}'")
+                return indice, False
+            else:
+                indice += 1
+        return indice, True
+    
+    def analizar_if(indice):
+        """Valida if (condición) { bloque } [else { bloque }]"""
+        if tokens[indice] != "if":
+            return indice, False
+        indice += 1
+        # Validar condición
+        if tokens[indice] != "(":
+            errores.append("Error: Falta '(' después de 'if'")
+            return indice, False
+        indice, ok = analizar_expresion(indice + 1)
+        if not ok or tokens[indice] != ")":
+            errores.append("Error: Condición inválida o falta ')'")
+            return indice, False
+        indice += 1
+        # Validar bloque
+        indice, ok = analizar_bloque(indice)
+        if not ok:
+            return indice, False
+        # Validar else (opcional)
+        if indice < len(tokens) and tokens[indice] == "else":
+            indice += 1
+            indice, ok = analizar_bloque(indice)
+        return indice, ok
+#-------------------------------------------------------------------------
+    
+    # Función para validar expresiones (existente)
+    def validar_expresion_desde(indice):
+        if indice >= longitud or tokens[indice] != "(":
+            errores.append("Error: Se esperaba '(' después de 'if'.")
+            return indice, False
+        indice += 1
+        while indice < longitud and tokens[indice] != ")":
+            if not (es_identificador(tokens[indice]) or es_numero(tokens[indice]) or tokens[indice] in SIMBOLOS_VALIDOS):
+                errores.append(f"Expresión inválida en condición if: {tokens[indice]}")
+                return indice, False
+            indice += 1
+        if indice == longitud or tokens[indice] != ")":
+            errores.append("Error: Falta ')' al final de la condición if.")
+            return indice, False
+        return indice + 1, True
+    
+    # Función para validar bloques (existente)
+    def validar_bloque_desde(indice):
+        if indice >= longitud or tokens[indice] != "{":
+            errores.append("Error: Se esperaba '{' para iniciar un bloque.")
+            return indice, False
+        indice += 1
+        llaves_abiertas = 1
+        while indice < longitud and llaves_abiertas > 0:
+            if tokens[indice] == "{":
+                llaves_abiertas += 1
+            elif tokens[indice] == "}":
+                llaves_abiertas -= 1
+            indice += 1
+        if llaves_abiertas != 0:
+            errores.append("Error: Llave '{' sin cerrar en bloque.")
+            return indice, False
+        return indice, True
+
+    #Función para validar métodos (nueva)
+    def validar_metodo_desde(indice):
+        if indice >= longitud:
+            errores.append("Error: Inesperado final de código al esperar método.")
+            return indice, False
+        #1. Validar tipo de datos del método
+        if tokens[indice] not in ["int","float", "string", "bool", "void"]:
+            errores.append(f"Error: Tipo de dato no válido para método: '{tokens[indice]}'")
+            return indice, False
+    
+        #2. Validar identificador del método
+        if indice +1 >= longitud or not es_identificador(tokens[indice + 1]):
+            errores.append(f"Error: Se esperaba un identificador después del tipo '{tokens[indice]}'")
+            return indice, False
+    
+        #3. Validar paréntesis de apertura para parámetros
+        if indice + 2 >= longitud or tokens[indice + 2] != "(":
+            errores.append("Error: Se esperaba '(' después del nombre del método")
+            return indice, False
+        indice +=3 #Avanzamos al inicio de los parámetros
+
+        #4. Validar parámetros (pueden estar vacios)
+        while indice < longitud and tokens[indice] != ")":
+            #Verificar tipo del parámetro
+            if tokens[indice] not in ["int", "float", "string", "bool"]:
+                errores.append(f"Error: Tipo de parámetro no válido: '{tokens[indice]}'")
+                return indice, False
+            #verificar indentificador del parámetro
+            if indice + 1 >= longitud or not es_identificador(tokens[indice + 1]):
+                errores.append(f"Error: Falta identificador para parámetro de tipo '{tokens[indice]}'")
+                return indice, False
+            indice +=2 #Avanzar al siguiente token
+
+            if indice < longitud and tokens[indice] == ",":
+                indice +=1
+                if indice >= longitud or tokens[indice] in [")",","]:
+                    errores.append("Error: Se esperaba otro parámetro después de ','")
+                    return indice, False
+        #5. Validar paréntesis de cierre
+        if indice >= longitud or tokens[indice] != ")":
+            errores.append("Error: Falta ')' al final de los parámetros del método")
+            return indice, False
+        indice +=1 #Avanzar al bloque del método
+
+        #6. Validar bloque del método
+        indice, ok = validar_bloque_desde(indice)
+        if not ok:
+            return indice, False
+
+        return indice, True
+    
+    # Nueva función para validar estructura del for
+    def validar_for_desde(indice):
+        if indice + 1 >= longitud or tokens[indice + 1] != "(":
+            errores.append("Error: Se esperaba '(' después de 'for'.")
+            return indice, False
+        
+        indice += 2  # Saltar 'for' y '('
+        
+        # Validar inicialización (debe ser una asignación)
+        if indice + 3 >= longitud or tokens[indice + 1] != "=":
+            errores.append("Error: Inicialización del 'for' debe ser una asignación (ej: i = 0).")
+            return indice, False
+        
+        indice += 3  # Saltar variable, '=' y valor
+        
+        if indice >= longitud or tokens[indice] != ";":
+            errores.append("Error: Falta ';' después de la inicialización del 'for'.")
+            return indice, False
+        
+        indice += 1  # Saltar ';'
+        
+        inicio_condicion = indice
+        while indice < longitud and tokens[indice] != ";":
+            indice += 1
+        
+        if indice >= longitud:
+            errores.append("Error: Falta ';' después de la condición del 'for'.")
+            return indice, False
+        
+        condicion = tokens[inicio_condicion:indice]
+        if not condicion:
+            errores.append("Error: Falta condición en el 'for'.")
+            return indice, False
+        
+        indice += 1  
+        inicio_incremento = indice
+        while indice < longitud and tokens[indice] != ")":
+            indice += 1
+        
+        if indice >= longitud:
+            errores.append("Error: Falta ')' al final del 'for'.")
+            return indice, False
+        
+        incremento = tokens[inicio_incremento:indice]
+        if not incremento:
+            errores.append("Error: Falta incremento en el 'for'.")
+            return indice, False
+        
+        if len(incremento) < 3 or incremento[1] != "=":
+            errores.append("Error: Incremento del 'for' debe ser una asignación (ej: i = i + 1).")
+            return indice, False
+        
+        indice += 1 
+        indice, ok = validar_bloque_desde(indice)
+        if not ok:
+            return indice, False
+        
+        return indice, True
+
+    while i < longitud - 1:
+>>>>>>> Stashed changes
         token = tokens[i]
         if token in ["full", "half", "bin", "crs", "chain"]:
             if i+1 < longitud and es_identificador(tokens[i+1]):
@@ -100,6 +442,35 @@ def analizar_sintaxis(tokens):
                     errores.append("Falta ';' al final de la declaración.")
                     i += 3
                     continue
+<<<<<<< Updated upstream
+=======
+            continue
+
+        elif token == "for":
+            i, ok = validar_for_desde(i)
+            if not ok:
+                continue
+            continue
+
+        elif token in ["full", "half", "bin", "crs", "chain"]:
+            pass
+
+        elif token in ["int", "float", "string", "bool", "void"]:
+        # Verificar si es una declaración de método (no solo una declaración de variable)
+            if i + 2 < longitud and tokens[i+2]=="(":
+                i, ok = validar_metodo_desde(i)
+                if not ok:
+                    continue
+                continue
+            else:
+                #Declaración de variables normal,  manejar acorde a la lógica actual
+                pass
+
+        elif token == "puts":
+            if i + 4 < longitud and tokens[i+1] == "(" and tokens[i+3] == ")" and tokens[i+4] == ";":
+                i += 5
+                continue
+>>>>>>> Stashed changes
             else:
                 errores.append("Nombre de variable no válido.")
                 i += 2
@@ -181,6 +552,7 @@ def interpretar(tokens):
 
 # --------------------- COMPILACIÓN ---------------------
 def compilar():
+    tokens = [...]
     inicio = time.time()
 
     texto = editor_text.get("1.0", tk.END)
@@ -203,7 +575,10 @@ def compilar():
     construir_hash()
 
     errores_sintacticos = analizar_sintaxis(tokens)
-    if errores_sintacticos:
+    if not errores_sintacticos:
+        salida = interpretar(tokens)
+
+    elif errores_sintacticos:
         errores_text.insert(tk.END, "Errores encontrados:\n\n")
         for err in errores_sintacticos:
             errores_text.insert(tk.END, f"Error sintáctico: {err}\n")
